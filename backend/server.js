@@ -1,65 +1,98 @@
-// 1. Load the environment tool
-const dotenv = require('dotenv');
+// 1. Load environment variables first
 const path = require('path');
+const dotenv = require('dotenv');
+dotenv.config({ path: path.join(__dirname, '.env') });
 
-// 2. Manually point to the .env file in the current folder
-const result = dotenv.config({ path: path.join(__dirname, '.env') });
-
-if (result.error) {
-    console.error("❌ ERROR: Could not find .env file! Make sure it is inside the 'backend' folder.");
-    process.exit(1);
-}
-
-// 3. Imports
 const express = require('express');
 const cors = require('cors');
 const Groq = require("groq-sdk");
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
+
+// 2. Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const PORT = process.env.PORT || 5000;
 
-// 4. Initialize Clients ONLY after we confirmed .env is loaded
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+// 3. Clean and Validate Keys
+const sbUrl = process.env.SUPABASE_URL?.trim();
+const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+const groqKey = process.env.GROQ_API_KEY?.trim();
 
-// 5. AI Extraction Function
+console.log("\n--- STARTUP STATUS ---");
+console.log(`📡 Supabase URL: ${sbUrl ? "✅ Found" : "❌ MISSING"}`);
+console.log(`🔑 Supabase Key: ${sbKey ? `✅ Found (Len: ${sbKey.length})` : "❌ MISSING"}`);
+console.log(`🤖 Groq Key:     ${groqKey ? "✅ Found" : "❌ MISSING"}`);
+console.log("----------------------\n");
+
+// 4. Initialize Clients (ONLY ONCE)
+const groq = new Groq({ apiKey: groqKey });
+const supabase = createClient(sbUrl, sbKey);
+
+// 5. AI Logic
 async function extractTaskInfo(userMessage) {
     const chatCompletion = await groq.chat.completions.create({
         messages: [
             {
                 role: "system",
-                content: "You are a student assistant. Extract task and deadline. Return ONLY JSON: {\"task_name\": \"string\", \"deadline\": \"ISO-8601\"}"
+                content: "You are a student assistant. Extract task and deadline. Return ONLY JSON: {\"task_name\": \"string\", \"deadline\": \"ISO-8601\"}. If no task found, set task_name to 'none'."
             },
             { role: "user", content: userMessage }
         ],
-        model: "llama3-8b-8192",
+        model: "llama-3.3-70b-versatile",
         response_format: { type: "json_object" }
     });
     return JSON.parse(chatCompletion.choices[0].message.content);
 }
 
-// 6. Webhook Route
+// 6. The Webhook Route
 app.post('/webhook', async (req, res) => {
-    const { message, sender } = req.body;
-    console.log(`📩 Message: ${message}`);
+    const message = req.body.Body || req.body.message;
+    const sender = req.body.From || req.body.sender;
+
+    if (!message) return res.status(400).send("No message found");
+
+    console.log(`📩 Incoming: "${message}" from ${sender}`);
+
     try {
         const aiData = await extractTaskInfo(message);
-        const { error } = await supabase.from('student_tasks').insert([
-            { task_name: aiData.task_name, deadline: aiData.deadline, user_phone: sender }
-        ]);
-        if (error) throw error;
-        res.status(200).json({ status: "success", reply: `Scheduled: ${aiData.task_name}` });
+        console.log("🤖 AI Extracted:", aiData);
+
+        if (aiData.task_name === 'none') {
+            res.set('Content-Type', 'text/xml');
+            return res.send(`<Response><Message>Hi! Try saying: "Remind me to submit the lab record tomorrow at 2pm."</Message></Response>`);
+        }
+
+        // Save to Database
+        const { error } = await supabase
+            .from('student_tasks')
+            .insert([{ 
+                task_name: aiData.task_name, 
+                deadline: aiData.deadline, 
+                user_phone: sender 
+            }]);
+
+        if (error) {
+            console.error("❌ Supabase Insert Error:", error.message);
+            throw error;
+        }
+
+        const responseDate = new Date(aiData.deadline).toLocaleString();
+        const replyText = `✅ Task Saved!\n\n📝: ${aiData.task_name}\n📅: ${responseDate}`;
+
+        res.set('Content-Type', 'text/xml');
+        res.send(`<Response><Message>${replyText}</Message></Response>`);
+
     } catch (err) {
-        console.error("❌ Error:", err.message);
-        res.status(500).json({ status: "error" });
+        console.error("❌ Processing Error:", err.message);
+        res.status(500).send("Error processing request");
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`\n🚀 SERVER RUNNING ON PORT ${PORT}`);
-    console.log(`✅ GROQ KEY LOADED: ${process.env.GROQ_API_KEY ? "YES" : "NO"}`);
+    console.log(`🚀 STUDENT BRAIN ACTIVE ON PORT ${PORT}\n`);
 });
+console.log("Supabase URL:", sbUrl);
