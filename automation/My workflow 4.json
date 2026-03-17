@@ -1,0 +1,66 @@
+{
+  "name": "My workflow 4",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook-test/test123",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "4c9f5a6b-bf57-4c63-a2dc-fb428318befc",
+      "name": "Webhook",
+      "webhookId": "403b739d-7b28-4d17-a482-c7c46ee667c6"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"reply\": \"Now it's perfectly working \"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        208,
+        0
+      ],
+      "id": "785cd62f-5e54-4451-a0f1-32a546b8ee20",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1
+  },
+  "versionId": "b078838c-d039-495c-a879-060d6ab160de",
+  "meta": {
+    "instanceId": "bac19db602b10a099228ac4bbc3f1dc61965d23cac237d305a0b5cec8e950a70"
+  },
+  "id": "MxV7NWJs256m0PMt",
+  "tags": []
+}
